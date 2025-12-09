@@ -42,9 +42,7 @@
       transition: transform .12s ease, box-shadow .12s ease;
     }
     .btn:active { transform: translateY(1px); }
-    .icon {
-      width: 20px; height: 20px; vertical-align: middle;
-    }
+    .icon { width: 20px; height: 20px; vertical-align: middle; }
     .title-gradient {
       background: linear-gradient(90deg,#ffb3e6,#e8d6ff);
       -webkit-background-clip: text;
@@ -60,7 +58,8 @@
   <script type="text/babel">
   const { useState, useEffect } = React;
 
-  function IconCalendar(props) {
+  /* ---------- Helper SVG components (single definitions) ---------- */
+  function IconCalendarSmall(props) {
     return (
       <svg className="icon" viewBox="0 0 24 24" fill="none" {...props}>
         <path d="M7 10h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
@@ -70,34 +69,61 @@
     );
   }
 
-  function IconMusic(props) {
+  function IconMusicSmall() {
     return (
-      <svg className="icon" viewBox="0 0 24 24" fill="none" {...props}>
+      <svg className="icon" viewBox="0 0 24 24" fill="none">
         <path d="M9 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
         <path d="M9 9V3l10 3v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     );
   }
 
-  function IconStar(props) {
+  function IconStarSmall() {
     return (
-      <svg className="icon" viewBox="0 0 24 24" fill="none" {...props}>
+      <svg className="icon" viewBox="0 0 24 24" fill="none">
         <path d="M12 2.9l2.4 4.8 5.3.8-3.8 3.7.9 5.2L12 16.9 6.2 17.4l.9-5.2L3.3 8.5l5.3-.8L12 2.9z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
       </svg>
     );
   }
 
-  function App(){
-    // STATES
+  /* ---------- Utility: calendar .ics generator ---------- */
+  function downloadIcs(eventTitle, dateStr, description = "") {
+    // Accepts YYYY-MM-DD or YYYYMMDD
+    const dt = dateStr.replaceAll("-", "");
+    const icsLines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      "CLASS:PUBLIC",
+      `SUMMARY:${eventTitle}`,
+      `DESCRIPTION:${description}`,
+      `DTSTART;VALUE=DATE:${dt}`,
+      "END:VEVENT",
+      "END:VCALENDAR"
+    ];
+    const ics = icsLines.join("\n");
+    const blob = new Blob([ics], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${eventTitle}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  /* ---------- MAIN APP ---------- */
+  function App() {
     const [spotifyToken, setSpotifyToken] = useState(null);
     const [groupReleases, setGroupReleases] = useState([]);
     const [soloReleases, setSoloReleases] = useState([]);
     const [birthdaysToday, setBirthdaysToday] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // CONFIG
-    const CLIENT_ID = "YOUR_SPOTIFY_CLIENT_ID"; // <-- replace this
-    const REDIRECT_URI = "https://MahimaDas27.github.io/Music/"; // keep your GitHub Pages URL
+    // ====== CONFIG - replace CLIENT_ID below with your Spotify Client ID ======
+    const CLIENT_ID = "YOUR_SPOTIFY_CLIENT_ID"; // <-- replace this with your client ID
+    const REDIRECT_URI = "https://mahimadas27.github.io/Music/"; // must match Spotify app redirect URL
     const SCOPE = "user-read-email";
 
     // BTS members (birthdays MM-DD)
@@ -111,34 +137,14 @@
       { name: "Jungkook", birthday: "09-01" }
     ];
 
-    // spotify auth url builder
-    const spotifyAuthUrl = `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}` +
-      `&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-      `&scope=${encodeURIComponent(SCOPE)}`;
-
-    // helper: add .ics calendar file and trigger download
-    function addToCalendar(eventTitle, dateStr, description = "") {
-      // dateStr expects YYYY-MM-DD or YYYYMMDD
-      const dt = dateStr.replaceAll("-", "");
-      const cal = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "BEGIN:VEVENT",
-        `SUMMARY:${eventTitle}`,
-        `DESCRIPTION:${description}`,
-        `DTSTART;VALUE=DATE:${dt}`,
-        "END:VEVENT",
-        "END:VCALENDAR"
-      ].join("\\n");
-
-      const url = 'data:text/calendar;charset=utf8,' + encodeURIComponent(cal);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${eventTitle}.ics`;
-      a.click();
+    // Build Spotify auth URL (implicit grant)
+    function buildSpotifyAuthUrl() {
+      return `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}` +
+             `&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+             `&scope=${encodeURIComponent(SCOPE)}`;
     }
 
-    // parse token from URL hash (Spotify implicit grant)
+    // Parse token from URL hash
     useEffect(() => {
       setLoading(true);
       const hash = window.location.hash.substring(1);
@@ -146,7 +152,7 @@
       const token = params.get("access_token");
       if (token) {
         setSpotifyToken(token);
-        // remove token from url (clean)
+        // clean URL (remove fragment)
         history.replaceState(null, "", window.location.pathname);
       }
       // compute birthdays for today
@@ -155,13 +161,12 @@
       const todays = BTS_MEMBERS.filter(m => m.birthday === mmdd);
       setBirthdaysToday(todays);
 
-      // initial mock content while loading real data
-      setTimeout(() => setLoading(false), 900);
+      // small delay for initial loading UI
+      setTimeout(() => setLoading(false), 600);
     }, []);
 
-    // Fetch BTS group and member releases from Spotify
-    // Strategy: search artist by name then fetch their albums/singles (dedupe by name)
-    async function fetchArtistReleasesByName(name, token){
+    // Helper: fetch artist releases by artist name
+    async function fetchArtistReleasesByName(name, token) {
       try {
         const q = encodeURIComponent(name);
         const searchRes = await fetch(`https://api.spotify.com/v1/search?q=${q}&type=artist&limit=1`, {
@@ -171,56 +176,55 @@
         const artist = searchJson.artists?.items?.[0];
         if (!artist) return [];
         const artistId = artist.id;
-        const albumsRes = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=30&market=KR`, {
+        const albumsRes = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=50&market=KR`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const albumsJson = await albumsRes.json();
         const items = albumsJson.items || [];
-        // Map to simple objects and dedupe by name
         const mapped = items.map(it => ({
           title: it.name,
           date: it.release_date,
           type: it.album_type,
-          artist: name
+          artistName: name
         }));
-        // unique by title
+        // dedupe by title (case-insensitive)
         const seen = new Set();
         return mapped.filter(m => {
-          if(seen.has(m.title.toLowerCase())) return false;
-          seen.add(m.title.toLowerCase());
+          const t = m.title.toLowerCase();
+          if (seen.has(t)) return false;
+          seen.add(t);
           return true;
         });
-      } catch(e){
+      } catch (e) {
         console.warn("Spotify fetch error for", name, e);
         return [];
       }
     }
 
-    // Master fetch triggered after login
+    // load Spotify data after login
     useEffect(() => {
-      async function loadSpotifyData(){
+      async function loadSpotifyData() {
         if (!spotifyToken) return;
         setLoading(true);
-        // group
+        // group releases
         const group = await fetchArtistReleasesByName("BTS", spotifyToken);
-        setGroupReleases(group.slice(0,12));
-        // solos: search by member stage names
+        setGroupReleases(group.slice(0, 12));
+        // solo releases for members
         const memberNames = ["RM","Jin","SUGA","j-hope","Jimin","V","Jungkook"];
         const allSolo = [];
-        for (const m of memberNames){
+        for (const m of memberNames) {
           const solo = await fetchArtistReleasesByName(m, spotifyToken);
-          // mark artist
-          solo.forEach(s => s.artist = m);
-          allSolo.push(...solo.slice(0,8));
+          solo.forEach(s => s.artistName = m);
+          allSolo.push(...solo.slice(0, 8));
         }
-        setSoloReleases(allSolo.slice(0,18));
+        setSoloReleases(allSolo.slice(0, 18));
         setLoading(false);
       }
       loadSpotifyData();
     }, [spotifyToken]);
 
-    // Debut anniversary: 2013-06-13
-    const debutAnniv = { title: "BTS Debut Anniversary", date: `${new Date().getFullYear()}-06-13`, desc: "Debut of BTS - 13 June 2013" };
+    // Debut anniversary: BTS debut 2013-06-13
+    const debutAnniv = { title: "BTS Debut Anniversary", date: `${new Date().getFullYear()}-06-13`, desc: "Debut of BTS — 13 June 2013" };
 
     return (
       <div className="space-y-6">
@@ -237,11 +241,16 @@
         </header>
 
         <main className="grid md:grid-cols-2 gap-6">
-          {/* Left column: Releases */}
+          {/* Left column: Group Releases */}
           <section className="card p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <IconMusicLabel />
+                <div className="w-8 h-8 flex items-center justify-center rounded-full" style={{background:"#fff0f5"}}>
+                  <svg className="icon" viewBox="0 0 24 24" fill="none" style={{width:18,height:18}}>
+                    <path d="M9 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" stroke="#5b3b6f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M9 9V3l10 3v6" stroke="#5b3b6f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
                 <h2 className="text-lg font-semibold">Group Releases</h2>
               </div>
               {spotifyToken ? <span className="text-sm soft">Spotify connected</span> : null}
@@ -252,7 +261,7 @@
               <div className="mb-4">
                 <button
                   className="btn px-4 py-2 rounded-md accent"
-                  onClick={() => { window.location.href = spotifyAuthUrl(); }}
+                  onClick={() => { window.location.href = buildSpotifyAuthUrl(); }}
                 >
                   Login with Spotify
                 </button>
@@ -269,8 +278,8 @@
                     <div className="text-sm soft">{r.date} • BTS</div>
                   </div>
                   <div className="flex gap-2 items-center">
-                    <button className="btn px-3 py-2 rounded-md" onClick={() => addToCalendar(`${r.title} — BTS`, r.date, `BTS release: ${r.title}`)}>
-                      <IconCalendar />
+                    <button className="btn px-3 py-2 rounded-md" onClick={() => downloadIcs(`${r.title} — BTS`, r.date, `BTS release: ${r.title}`)}>
+                      <IconCalendarSmall />
                     </button>
                   </div>
                 </div>
@@ -283,7 +292,7 @@
             <div className="card p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <IconMusic />
+                  <IconMusicSmall />
                   <h3 className="text-lg font-semibold">Solo Releases</h3>
                 </div>
               </div>
@@ -295,11 +304,11 @@
                   <div key={i} className="flex items-center justify-between p-3 rounded-md" style={{background:"#fff8ff"}}>
                     <div>
                       <div className="font-medium">{s.title}</div>
-                      <div className="text-sm soft">{s.artist} • {s.date}</div>
+                      <div className="text-sm soft">{s.artistName} • {s.date}</div>
                     </div>
                     <div className="flex gap-2">
-                      <button className="btn px-3 py-2 rounded-md" onClick={() => addToCalendar(`${s.title} — ${s.artist}`, s.date, `Solo release: ${s.title} by ${s.artist}`)}>
-                        <IconCalendar />
+                      <button className="btn px-3 py-2 rounded-md" onClick={() => downloadIcs(`${s.title} — ${s.artistName}`, s.date, `Solo release: ${s.title} by ${s.artistName}`)}>
+                        <IconCalendarSmall />
                       </button>
                     </div>
                   </div>
@@ -310,7 +319,7 @@
             <div className="card p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <IconStar />
+                  <IconStarSmall />
                   <h3 className="text-lg font-semibold">Today: Member Birthdays</h3>
                 </div>
               </div>
@@ -325,12 +334,11 @@
                     <div className="text-sm soft">BTS • {b.birthday}</div>
                   </div>
                   <div>
-                    {/* calendar uses current year for date */}
                     <button className="btn px-3 py-2 rounded-md" onClick={() => {
                       const year = new Date().getFullYear();
-                      addToCalendar(`${b.name} Birthday`, `${year}-${b.birthday}`, `${b.name} (BTS) birthday`);
+                      downloadIcs(`${b.name} Birthday`, `${year}-${b.birthday}`, `${b.name} (BTS) birthday`);
                     }}>
-                      <IconCalendar />
+                      <IconCalendarSmall />
                     </button>
                   </div>
                 </div>
@@ -343,8 +351,8 @@
                   <div className="text-sm soft">June 13 — 2013</div>
                 </div>
                 <div>
-                  <button className="btn px-3 py-2 rounded-md accent" onClick={() => addToCalendar(debutAnniv.title, debutAnniv.date, debutAnniv.desc)}>
-                    <IconCalendar />
+                  <button className="btn px-3 py-2 rounded-md accent" onClick={() => downloadIcs(debutAnniv.title, debutAnniv.date, debutAnniv.desc)}>
+                    <IconCalendarSmall />
                     <span className="ml-2 soft">Add</span>
                   </button>
                 </div>
@@ -357,50 +365,11 @@
         <footer className="text-sm soft mt-6">
           <div className="flex items-center justify-between">
             <div>Made for ARMY • Love Yourself theme</div>
-            <div>Tip: Replace <code>YOUR_SPOTIFY_CLIENT_ID</code> in code to fetch live releases.</div>
+            <div>Tip: Replace <code>YOUR_SPOTIFY_CLIENT_ID</code> in code and add <code>{REDIRECT_URI || 'https://mahimadas27.github.io/Music/'}</code> as a redirect URI in your Spotify app settings.</div>
           </div>
         </footer>
       </div>
     );
-  }
-
-  // --- helper components & functions outside App (to keep JSX tidy) ---
-  function IconMusicLabel(){ return (
-    <div className="w-8 h-8 flex items-center justify-center rounded-full" style={{background:"#fff0f5"}}>
-      <svg className="icon" viewBox="0 0 24 24" fill="none" style={{width:18,height:18}}>
-        <path d="M9 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" stroke="#5b3b6f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M9 9V3l10 3v6" stroke="#5b3b6f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    </div>
-  );}
-
-  function IconCalendar(){ return (
-    <svg className="icon" viewBox="0 0 24 24" fill="none" style={{width:18,height:18}}>
-      <path d="M7 10h5" stroke="#5b3b6f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-      <rect x="3" y="5" width="18" height="16" rx="2" stroke="#5b3b6f" strokeWidth="1.6" fill="none"/>
-      <path d="M16 3v4M8 3v4" stroke="#5b3b6f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );}
-
-  function IconMusic(){ return (
-    <svg className="icon" viewBox="0 0 24 24" fill="none" style={{width:18,height:18}}>
-      <path d="M9 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" stroke="#5b3b6f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M9 9V3l10 3v6" stroke="#5b3b6f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );}
-
-  function IconStar(){ return (
-    <svg className="icon" viewBox="0 0 24 24" fill="none" style={{width:18,height:18}}>
-      <path d="M12 2.9l2.4 4.8 5.3.8-3.8 3.7.9 5.2L12 16.9 6.2 17.4l.9-5.2L3.3 8.5l5.3-.8L12 2.9z" stroke="#5b3b6f" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-    </svg>
-  );}
-
-  // Spotify URL builder function accessible inside App
-  function spotifyAuthUrl() {
-    const CLIENT_ID = "YOUR_SPOTIFY_CLIENT_ID";
-    const REDIRECT_URI = "https://MahimaDas27.github.io/Music/";
-    const SCOPE = "user-read-email";
-    return `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(SCOPE)}`;
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
